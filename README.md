@@ -36,11 +36,11 @@ To work with this project, you will need:
 
 1. Clone the repository:
     ```sh
-    git clone https://github.com/yourusername/visicalc-6502-recreation.git
+    git clone https://github.com/davidrimshnick/visicalc_da.git
     ```
 2. Navigate to the project directory:
     ```sh
-    cd visicalc-6502-recreation
+    cd visicalc_da
     ```
 3. Assemble the source code using your preferred 6502 assembler:
     ```sh
