@@ -1,6 +1,6 @@
 # VisiCalc 6502 Recreation
 
-Welcome to the VisiCalc 6502 Recreation project! This repository aims to recreate the original source code for VisiCalc, the pioneering spreadsheet software first released in 1979. This project is dedicated to preserving and restoring this important piece of computing history.
+Welcome to the VisiCalc 6502 Recreation project! This repository aims to recreate the original source code for VisiCalc, the pioneering spreadsheet software first released in 1979, as closely as possible. This project is dedicated to preserving and restoring this important piece of computing history.
 
 ## Table of Contents
 
