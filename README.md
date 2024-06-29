@@ -20,35 +20,6 @@ VisiCalc was the first electronic spreadsheet program, transforming the way busi
 
 ## Background
 
-VisiCalc, short for "Visible Calculator," was created by Dan Bricklin and Bob Frankston. It
-that froze
-ChatGPT
-Here's the updated README.md incorporating the visicalc-6502.asm file:
-
-markdown
-Copy code
-# VisiCalc 6502 Recreation
-
-Welcome to the VisiCalc 6502 Recreation project! This repository aims to recreate the original source code for VisiCalc, the pioneering spreadsheet software first released in 1979. This project is a collaborative effort involving some of the original creators of VisiCalc and is dedicated to preserving and restoring this important piece of computing history.
-
-## Table of Contents
-
-- [Project Overview](#project-overview)
-- [Background](#background)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-- [Usage](#usage)
-- [Contributing](#contributing)
-- [License](#license)
-- [Acknowledgments](#acknowledgments)
-
-## Project Overview
-
-VisiCalc was the first electronic spreadsheet program, transforming the way businesses and individuals handled data and calculations. It was originally developed for the Apple II computer using the 6502 assembly language. The original source code, unfortunately, has been lost to time. This project aims to recreate the source code from scratch, staying true to the original functionality and performance.
-
-## Background
-
 VisiCalc, short for "Visible Calculator," was created by Dan Bricklin and Bob Frankston. It allowed users to perform complex calculations on a grid of cells, making it an invaluable tool for accountants, business professionals, and academics. VisiCalc laid the foundation for future spreadsheet applications like Lotus 1-2-3 and Microsoft Excel.
 
 ## Getting Started
