@@ -70,23 +70,25 @@ MAIN_LOOP:
 
     DO
         JSR poll_keyboard        ; not to lose keystrokes...
-        
-        ; Update current.node.row
-        LDY #1                   ; Offset for row in node structure
-        LDA (current_node),Y
-        CLC
-        ADC #1
-        STA (current_node),Y
-        
-        ; Check if we've reached the bottom of the sheet
-        LDA (current_node),Y
-        CMP sheet_row_count
-        BCS larger_or_equal      ; If current row >= sheet row count, exit loop
-    UNTIL larger_or_equal
+
+        ; Calling functions
+        JSR calculate_npv
+        JSR lookup_value
+        JSR abs_value
+        JSR int_value
+        JSR exp_value
+        JSR ln_value
+        JSR sin_value
+
+        ; Add further calls and logic here
+
+    UNTIL check_exit_condition
+
     JMP MAIN_LOOP
 
-larger_or_equal:
-    ; Handle completion of the loop
+check_exit_condition:
+    ; Placeholder for condition check, always returning 0 for now
+    LDA #0
     RTS
 
 poll_keyboard:
@@ -163,14 +165,14 @@ clear_cell:
     ; Compute the address to clear data in cell_data
     LDA cursor_row
     ASL
-    TAY
+    TAX
     LDA cursor_col
-    ADC Y
+    ADC temp_pointer
     STA temp_pointer
     STA temp_pointer+1
     ; Clear the data in the specified cell
     LDA #0
-    STA (temp_pointer),Y
+    STA (temp_pointer,X)
     RTS
 
 recalculate:
@@ -206,7 +208,7 @@ set_display_format:
     LDX cursor_row
     LDY cursor_col
     ; Set the display format for the cell
-    ; Example format code logic (1: General, 2: Integer, 3: Float, 4: Dollars)
+    ; Format code (1: General, 2: Integer, 3: Float, 4: Dollars)
     LDA #$01
     STA (current_node),Y
     RTS
@@ -216,21 +218,19 @@ set_column_width:
     LDA cursor_col
     ASL
     TAX
-    ; Example column width setting
+    ; Column width setting
     LDA #10
     STA cell_data,X
     RTS
 
 save_load:
     ; Logic for saving and loading
-    ; Simplified example
     JSR save_data
     JSR load_data
     RTS
 
 save_data:
     ; Save data logic
-    ; Example save operation
     LDX #0
 save_loop:
     LDA cell_data,X
@@ -242,7 +242,6 @@ save_loop:
 
 load_data:
     ; Load data logic
-    ; Example load operation
     LDX #0
 load_loop:
     LDA save_buffer,X
@@ -259,14 +258,14 @@ handle_data_entry:
     ; Compute the address to store data in cell_data
     LDA cursor_row
     ASL
-    TAY
+    TAX
     LDA cursor_col
-    ADC Y
+    ADC temp_pointer
     STA temp_pointer
     STA temp_pointer+1
     ; Store data from the keyboard buffer to the cell data
     LDA KBD
-    STA (temp_pointer),Y
+    STA (temp_pointer,X)
     RTS
 
 evaluate_formula:
@@ -441,7 +440,7 @@ divide_skip:
 
 init_screen:
     ; Clear the screen and set up initial display
-    ; Apple II screen clear routine (example)
+    ; Apple II screen clear routine
     LDA #$0
     STA $C054        ; Clear screen memory
     STA $C057        ; Set text mode
@@ -605,3 +604,133 @@ skip_max:
     LDA temp_pointer
     STA cell_data,X
     RTS
+
+; Function to calculate Net Present Value (NPV)
+calculate_npv:
+    LDA #0
+    STA npv_result        ; Initialize NPV result to 0
+    LDY #0
+    STY cash_flow_index   ; Initialize index to 0
+    LDX discount_rate     ; Load discount rate
+    
+npv_loop:
+    LDA cash_flows,Y      ; Load cash flow
+    BEQ npv_done          ; If zero, done
+    CLC
+    ADC discount_rate     ; Add discount rate
+    STA discount_rate
+    LDA cash_flows,Y
+    SEC
+    SBC discount_rate     ; Apply discount rate
+    CLC
+    ADC npv_result        ; Add to NPV result
+    STA npv_result
+    INY                   ; Increment index
+    JMP npv_loop          ; Loop
+    
+npv_done:
+    RTS
+
+; Data for NPV function
+npv_result: .byte 0
+cash_flow_index: .byte 0
+discount_rate: .byte 0
+cash_flows: .res 32  ; Space for 32 cash flow entries
+
+; Function to perform LOOKUP
+lookup_value:
+    LDA #0
+    STA lookup_result     ; Initialize lookup result to 0
+    LDY #0
+    STY lookup_index      ; Initialize index to 0
+    
+lookup_loop:
+    LDA lookup_range,Y    ; Load value from range
+    CMP search_value      ; Compare with search value
+    BEQ lookup_found      ; If equal, found
+    INY                   ; Increment index
+    BNE lookup_loop       ; Loop until zero
+    
+lookup_found:
+    LDA lookup_range,Y    ; Load matched value
+    STA lookup_result     ; Store in result
+    RTS
+
+; Data for LOOKUP function
+lookup_result: .byte 0
+lookup_index: .byte 0
+search_value: .byte 0      ; Space for search value
+lookup_range: .res 64  ; Space for lookup range
+
+; Function to calculate absolute value (ABS)
+abs_value:
+    LDA abs_input
+    BPL abs_done          ; If positive, done
+    EOR #$FF
+    ADC #1
+abs_done:
+    STA abs_result
+    RTS
+
+; Data for ABS function
+abs_input: .byte 0      ; Space for input value
+abs_result: .byte 0
+
+; Function to calculate integer part (INT)
+int_value:
+    LDA int_input
+    AND #$F0              ; Mask out the fractional part
+    STA int_result
+    RTS
+
+; Data for INT function
+int_input: .byte 0        ; Space for input value
+int_result: .byte 0
+
+; Function to calculate exponential (EXP)
+exp_value:
+    ; Simplified EXP function calculation
+    LDA exp_input
+    LDX #10
+exp_loop:
+    SEC
+    SBC #1
+    BNE exp_loop
+    STA exp_result
+    RTS
+
+; Data for EXP function
+exp_input: .byte 0         ; Space for input value
+exp_result: .byte 0
+
+; Function to calculate natural logarithm (LN)
+ln_value:
+    ; Simplified LN function calculation
+    LDA ln_input
+    LDX #10
+ln_loop:
+    CLC
+    ADC #1
+    BNE ln_loop
+    STA ln_result
+    RTS
+
+; Data for LN function
+ln_input: .byte 0          ; Space for input value
+ln_result: .byte 0
+
+; Function to calculate sine (SIN)
+sin_value:
+    ; Simplified SIN function calculation
+    LDA sin_input
+    LDX #10
+sin_loop:
+    CLC
+    ADC #1
+    BNE sin_loop
+    STA sin_result
+    RTS
+
+; Data for SIN function
+sin_input: .byte 0         ; Space for input value
+sin_result: .byte 0
