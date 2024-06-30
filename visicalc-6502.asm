@@ -110,6 +110,20 @@ process_key:
     BEQ move_cursor_left
     CMP #$1F         ; Check for Right Arrow
     BEQ move_cursor_right
+    CMP #'C'         ; Check for Clear cell command
+    BEQ clear_cell
+    CMP #'R'         ; Check for Recalculate command
+    BEQ recalculate
+    CMP #'B'         ; Clear cell command /B
+    BEQ clear_cell
+    CMP #'D'         ; Delete row/column command /D
+    BEQ delete_row_column
+    CMP #'F'         ; Set display format command /F
+    BEQ set_display_format
+    CMP #'G'         ; Set column width /G
+    BEQ set_column_width
+    CMP #'S'         ; Save/Load command /S
+    BEQ save_load
     ; Handle other data entry
     JSR handle_data_entry
     RTS
@@ -140,6 +154,89 @@ move_cursor_left:
 move_cursor_right:
     INC cursor_col
     JSR update_cursor_display
+    RTS
+
+clear_cell:
+    ; Clear the current cell
+    LDX cursor_row
+    LDY cursor_col
+    LDA #0
+    STA (current_node),Y
+    RTS
+
+recalculate:
+    ; Recalculate the entire sheet
+    LDX #0
+recalculate_loop:
+    LDA cell_data,X
+    CMP #TOKEN_SUM
+    BEQ sum_function
+    CMP #TOKEN_NUMBER
+    BEQ evaluate_formula
+    ; Add logic for other formula tokens
+    INX
+    CPX #$FF
+    BNE recalculate_loop
+    RTS
+
+delete_row_column:
+    ; Logic to delete row or column
+    ; Simplified example
+    LDA cursor_row
+    ASL
+    TAX
+    LDA #0
+    STA cell_data,X
+    RTS
+
+set_display_format:
+    ; Logic to set display format
+    ; Example format setting
+    LDX cursor_row
+    LDY cursor_col
+    LDA #$01 ; Example format code
+    STA (current_node),Y
+    RTS
+
+set_column_width:
+    ; Logic to set column width
+    ; Simplified example
+    LDA cursor_col
+    ASL
+    TAX
+    LDA #10 ; Example column width
+    STA cell_data,X
+    RTS
+
+save_load:
+    ; Logic for saving and loading
+    ; Simplified example
+    JSR save_data
+    JSR load_data
+    RTS
+
+save_data:
+    ; Save data logic
+    ; Example save operation
+    LDX #0
+save_loop:
+    LDA cell_data,X
+    STA save_buffer,X
+    INX
+    CPX #$FF
+    BNE save_loop
+    RTS
+
+load_data:
+    ; Load data logic
+    ; Example load operation
+    LDX #0
+load_loop:
+    LDA save_buffer,X
+    STA cell_data,X
+    INX
+    CPX #$FF
+    BNE load_loop
     RTS
 
 handle_data_entry:
