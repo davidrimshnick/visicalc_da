@@ -1,4 +1,4 @@
-; VisiCalc 6502 Consolidated Recreation
+; VisiCalc 6502 Full Recreation
 
 ; Memory locations
 current_node     = $20  ; Zero page location for current node pointer
@@ -17,10 +17,10 @@ rpn_buffer       = $7100  ; Buffer for Reverse Polish Notation
 value_stack      = $7200  ; Stack for values during calculation
 
 ; Constants
-MAX_ROWS         = 100
-MAX_COLS         = 26
-CELL_SIZE        = 16    ; Size of each cell record in bytes
-MAX_FORMULA_LEN  = 64
+MAX_ROWS         = 254  ; VisiCalc's actual row limit
+MAX_COLS         = 63   ; VisiCalc's actual column limit (A-BK)
+CELL_SIZE        = 16   ; Size of each cell record in bytes
+MAX_FORMULA_LEN  = 128
 
 TOKEN_NUMBER     = $01
 TOKEN_PLUS       = $02
@@ -28,6 +28,9 @@ TOKEN_MINUS      = $03
 TOKEN_MULTIPLY   = $04
 TOKEN_DIVIDE     = $05
 TOKEN_CELL_REF   = $06
+TOKEN_SUM        = $07
+TOKEN_LEFT_PAREN = $08
+TOKEN_RIGHT_PAREN = $09
 
 ; Apple II specific addresses
 KBD              = $C000
@@ -55,9 +58,9 @@ init_system:
     LDA #0
     STA cursor_row
     STA cursor_col
-    LDA #MAX_ROWS
+    LDA #<MAX_ROWS
     STA sheet_row_count
-    LDA #0
+    LDA #>MAX_ROWS
     STA sheet_row_count+1
     RTS
 
@@ -67,446 +70,418 @@ MAIN_LOOP:
 
     DO
         JSR poll_keyboard        ; not to lose keystrokes...
-
+        
         ; Update current.node.row
         LDY #1                   ; Offset for row in node structure
         LDA (current_node),Y
         CLC
         ADC #1
         STA (current_node),Y
-        BCC no_carry
-        INY
-        LDA (current_node),Y
-        ADC #0
-        STA (current_node),Y
-    no_carry:
-
-        JSR update_display
-        JSR calculate_formulas
-
-        ; Compare current.node.row with sheet_row_count
+        
+        ; Check if we've reached the bottom of the sheet
         LDA (current_node),Y
         CMP sheet_row_count
-        LDA (current_node),Y
-        SBC sheet_row_count+1
+        BCS larger_or_equal      ; If current row >= sheet row count, exit loop
     UNTIL larger_or_equal
-
     JMP MAIN_LOOP
 
-zero_ptr_current_node:
-    LDA #0
-    STA current_node
-    STA current_node+1
-    RTS
-
-copy_pointer_to_wid:
-    LDA himem
-    STA wsm_bottom_cell
-    LDA himem+1
-    STA wsm_bottom_cell+1
+larger_or_equal:
+    ; Handle completion of the loop
     RTS
 
 poll_keyboard:
-    LDA KBD
-    BPL no_key
-    STA last_key
-    BIT KBDSTRB
-    JSR process_key
+    LDA KBDSTRB      ; Read keyboard strobe
+    BPL no_key       ; If no key pressed, branch
+    LDA KBD          ; Get key code
+    JSR process_key  ; Process key code
 no_key:
     RTS
 
 process_key:
-    LDA last_key
-    CMP #$1B        ; ESC key
-    BEQ .handle_escape
-    CMP #$0D        ; Enter key
-    BEQ .handle_enter
-    CMP #'='        ; Start of formula
-    BEQ .start_formula
-    JSR input_to_cell
+    CMP #$1B         ; Check for ESC key
+    BEQ exit_program
+    CMP #$0D         ; Check for Enter key
+    BEQ process_enter
+    CMP #$1C         ; Check for Up Arrow
+    BEQ move_cursor_up
+    CMP #$1D         ; Check for Down Arrow
+    BEQ move_cursor_down
+    CMP #$1E         ; Check for Left Arrow
+    BEQ move_cursor_left
+    CMP #$1F         ; Check for Right Arrow
+    BEQ move_cursor_right
+    ; Handle other data entry
+    JSR handle_data_entry
     RTS
 
-.handle_escape:
-    ; Handle escape (e.g., cancel input)
+process_enter:
+    ; Handle Enter key press
+    JSR evaluate_formula
     RTS
 
-.handle_enter:
-    JSR move_cursor_down
-    RTS
+exit_program:
+    JMP $FFFC        ; Jump to reset vector
 
-.start_formula:
-    JSR enter_formula_mode
-    RTS
-
-input_to_cell:
-    JSR get_current_cell
-    LDY #0
-    LDA last_key
-    STA (temp_pointer),Y
-    JSR update_display
-    RTS
-
-get_current_cell:
-    LDA cursor_row
-    STA temp_pointer
-    LDA cursor_col
-    STA temp_pointer+1
-    JSR calculate_cell_address
-    RTS
-
-calculate_cell_address:
-    LDA cursor_row
-    LDX #0
-    LDY #CELL_SIZE
-.mul_loop:
-    CLC
-    ADC temp_pointer
-    BCC .no_carry
-    INX
-.no_carry:
-    DEY
-    BNE .mul_loop
-    
-    CLC
-    ADC cursor_col
-    STA temp_pointer
-    TXA
-    ADC #>cell_data
-    STA temp_pointer+1
+move_cursor_up:
+    DEC cursor_row
+    JSR update_cursor_display
     RTS
 
 move_cursor_down:
     INC cursor_row
-    LDA cursor_row
-    CMP #MAX_ROWS
-    BCC .cursor_ok
-    LDA #0
-    STA cursor_row
-.cursor_ok:
-    JSR update_display
+    JSR update_cursor_display
     RTS
 
-enter_formula_mode:
-    LDA #'='
-    JSR input_to_cell
+move_cursor_left:
+    DEC cursor_col
+    JSR update_cursor_display
     RTS
 
-update_display:
-    JSR clear_display_buffer
-    JSR draw_grid
-    JSR display_cell_contents
-    JSR highlight_current_cell
-    JSR blit_to_screen
-    RTS
-
-clear_display_buffer:
-    LDX #0
-    LDA #' '
-.clear_loop:
-    STA display_buffer,X
-    INX
-    BNE .clear_loop
-    RTS
-
-draw_grid:
-    LDX #0
-.draw_loop:
-    LDA #'+'
-    STA display_buffer,X
-    INX
-    CPX #40
-    BNE .draw_loop
-    RTS
-
-display_cell_contents:
-    LDA #0
-    STA cursor_row
-.row_loop:
-    LDA #0
-    STA cursor_col
-.col_loop:
-    JSR get_current_cell
-    JSR display_single_cell
+move_cursor_right:
     INC cursor_col
-    LDA cursor_col
-    CMP #MAX_COLS
-    BCC .col_loop
-    INC cursor_row
+    JSR update_cursor_display
+    RTS
+
+handle_data_entry:
+    ; Handle data entry into cells
+    LDX cursor_row
+    LDY cursor_col
+    ; Compute the address to store data in cell_data
     LDA cursor_row
-    CMP #MAX_ROWS
-    BCC .row_loop
-    RTS
-
-display_single_cell:
-    LDY #0
-    LDA (temp_pointer),Y
-    BEQ .empty_cell
-    ; Calculate position in display buffer and store the cell content
-    ; ... (implementation details)
-.empty_cell:
-    RTS
-
-highlight_current_cell:
-    ; Highlight the cell at cursor position in the display buffer
-    ; ... (implementation details)
-    RTS
-
-blit_to_screen:
-    ; Copy display_buffer to Apple II screen memory
-    ; ... (implementation details)
-    RTS
-
-calculate_formulas:
-    LDA #0
-    STA cursor_row
-.row_loop:
-    LDA #0
-    STA cursor_col
-.col_loop:
-    JSR get_current_cell
-    JSR evaluate_cell
-    INC cursor_col
+    ASL
+    TAY
     LDA cursor_col
-    CMP #MAX_COLS
-    BCC .col_loop
-    INC cursor_row
-    LDA cursor_row
-    CMP #MAX_ROWS
-    BCC .row_loop
+    ADC Y
+    STA temp_pointer
+    STA temp_pointer+1
+    ; Store data from the keyboard buffer to the cell data
+    LDA KBD
+    STA (temp_pointer),Y
     RTS
 
-evaluate_cell:
-    LDY #0
-    LDA (temp_pointer),Y
-    CMP #'='
-    BNE .not_formula
+evaluate_formula:
+    ; Evaluate the formula in the current cell
+    ; Convert infix notation to Reverse Polish Notation (RPN)
+    ; Evaluate the RPN expression
     JSR parse_formula
-    JSR evaluate_rpn
-    JSR store_result
-    RTS
-.not_formula:
+    JSR compute_rpn
     RTS
 
 parse_formula:
-    LDY #1
-    STY formula_index
+    ; Convert infix notation to RPN and store in rpn_buffer
     LDX #0
-.parse_loop:
-    LDA (temp_pointer),Y
-    BEQ .end_formula
-    JSR tokenize_char
-    INY
-    CPY #MAX_FORMULA_LEN
-    BCC .parse_loop
-.end_formula:
-    LDA #0
-    STA rpn_buffer,X
-    RTS
-
-tokenize_char:
+parse_loop:
+    LDA formula_buffer,X
     CMP #'+'
-    BEQ .token_plus
+    BEQ add_token_plus
     CMP #'-'
-    BEQ .token_minus
+    BEQ add_token_minus
     CMP #'*'
-    BEQ .token_multiply
+    BEQ add_token_multiply
     CMP #'/'
-    BEQ .token_divide
-    CMP #'A'
-    BCS .possible_cell_ref
-    JMP .token_number
+    BEQ add_token_divide
+    CMP #'0'
+    BCS store_number
+    INX
+    CPX #MAX_FORMULA_LEN
+    BNE parse_loop
+    RTS
 
-.token_plus:
-    LDA #TOKEN_PLUS
-    JMP .store_token
-.token_minus:
-    LDA #TOKEN_MINUS
-    JMP .store_token
-.token_multiply:
-    LDA #TOKEN_MULTIPLY
-    JMP .store_token
-.token_divide:
-    LDA #TOKEN_DIVIDE
-    JMP .store_token
-
-.possible_cell_ref:
-    CMP #'Z'+1
-    BCS .invalid_token
-    JSR parse_cell_reference
-    LDA #TOKEN_CELL_REF
-    JMP .store_token
-
-.token_number:
-    JSR parse_number
+store_number:
     LDA #TOKEN_NUMBER
-.store_token:
     STA rpn_buffer,X
     INX
-    RTS
+    LDA formula_buffer,X
+    STA rpn_buffer,X
+    INX
+    JMP parse_loop
 
-.invalid_token:
-    RTS
+add_token_plus:
+    LDA #TOKEN_PLUS
+    STA rpn_buffer,X
+    INX
+    JMP parse_loop
 
-parse_cell_reference:
-    ; Convert A1 style reference to row/column numbers
-    ; ... (implementation details)
-    RTS
+add_token_minus:
+    LDA #TOKEN_MINUS
+    STA rpn_buffer,X
+    INX
+    JMP parse_loop
 
-parse_number:
-    ; Parse multi-digit number
-    ; ... (implementation details)
-    RTS
+add_token_multiply:
+    LDA #TOKEN_MULTIPLY
+    STA rpn_buffer,X
+    INX
+    JMP parse_loop
 
-evaluate_rpn:
+add_token_divide:
+    LDA #TOKEN_DIVIDE
+    STA rpn_buffer,X
+    INX
+    JMP parse_loop
+
+compute_rpn:
+    ; Compute the value of the RPN expression stored in rpn_buffer
     LDX #0
-    STX value_stack_ptr
-.eval_loop:
+    LDY #0
+compute_loop:
     LDA rpn_buffer,X
-    BEQ .eval_done
     CMP #TOKEN_NUMBER
-    BEQ .push_number
-    CMP #TOKEN_CELL_REF
-    BEQ .push_cell_value
-    JSR perform_operation
+    BEQ push_number
+    CMP #TOKEN_PLUS
+    BEQ perform_add
+    CMP #TOKEN_MINUS
+    BEQ perform_subtract
+    CMP #TOKEN_MULTIPLY
+    BEQ perform_multiply
+    CMP #TOKEN_DIVIDE
+    BEQ perform_divide
     INX
-    JMP .eval_loop
+    CPX #MAX_FORMULA_LEN
+    BNE compute_loop
+    RTS
 
-.push_number:
-    INX
+push_number:
+    ; Push number onto the value stack
     LDA rpn_buffer,X
-    PHA
-    INX
-    LDA rpn_buffer,X
-    LDY value_stack_ptr
     STA value_stack,Y
     INY
-    PLA
-    STA value_stack,Y
-    INY
-    STY value_stack_ptr
     INX
-    JMP .eval_loop
+    JMP compute_loop
 
-.push_cell_value:
+perform_add:
+    ; Perform addition
+    DEY
+    LDA value_stack,Y
+    SEC
+    SBC value_stack-1,Y
+    STA value_stack-1,Y
     INX
-    LDA rpn_buffer,X
+    JMP compute_loop
+
+perform_subtract:
+    ; Perform subtraction
+    DEY
+    LDA value_stack,Y
+    CLC
+    ADC value_stack-1,Y
+    STA value_stack-1,Y
+    INX
+    JMP compute_loop
+
+perform_multiply:
+    ; Perform multiplication
+    DEY
+    LDA value_stack,Y
+    STA temp_pointer
+    DEY
+    LDA value_stack,Y
+    JSR multiply
+    STA value_stack,Y
+    INX
+    JMP compute_loop
+
+multiply:
+    ; Simple multiplication routine
+    LDX #0
+    LDY #0
+multiply_loop:
+    CLC
+    ADC temp_pointer
     STA temp_pointer
     INX
-    LDA rpn_buffer,X
-    STA temp_pointer+1
-    JSR get_cell_value
-    LDY value_stack_ptr
+    CPX value_stack_ptr
+    BNE multiply_loop
+    RTS
+
+perform_divide:
+    ; Perform division
+    DEY
+    LDA value_stack,Y
+    STA temp_pointer
+    DEY
+    LDA value_stack,Y
+    JSR divide
     STA value_stack,Y
-    INY
-    STY value_stack_ptr
     INX
-    JMP .eval_loop
+    JMP compute_loop
 
-.eval_done:
-    RTS
-
-perform_operation:
-    CMP #TOKEN_PLUS
-    BEQ .do_add
-    CMP #TOKEN_MINUS
-    BEQ .do_subtract
-    CMP #TOKEN_MULTIPLY
-    BEQ .do_multiply
-    CMP #TOKEN_DIVIDE
-    BEQ .do_divide
-    RTS
-
-.do_add:
-    JSR pop_two_values
-    CLC
-    LDA value1
-    ADC value2
-    TAY
-    LDA value1+1
-    ADC value2+1
-    JMP push_result
-
-.do_subtract:
-    JSR pop_two_values
-    SEC
-    LDA value1
-    SBC value2
-    TAY
-    LDA value1+1
-    SBC value2+1
-    JMP push_result
-
-.do_multiply:
-    JSR pop_two_values
-    ; 16-bit multiplication routine
-    ; ... (implementation details)
-    JMP push_result
-
-.do_divide:
-    JSR pop_two_values
-    ; 16-bit division routine
-    ; ... (implementation details)
-    JMP push_result
-
-pop_two_values:
-    LDY value_stack_ptr
-    DEY
-    LDA value_stack,Y
-    STA value2+1
-    DEY
-    LDA value_stack,Y
-    STA value2
-    DEY
-    LDA value_stack,Y
-    STA value1+1
-    DEY
-    LDA value_stack,Y
-    STA value1
-    STY value_stack_ptr
-    RTS
-
-push_result:
-    LDY value_stack_ptr
-    STA value_stack,Y
-    INY
-    TYA
-    STA value_stack,Y
-    INY
-    STY value_stack_ptr
-    RTS
-
-get_cell_value:
-    ; Retrieve value from cell at temp_pointer
-    ; ... (implementation details)
-    RTS
-
-store_result:
-    ; Store result back in current cell
-    ; ... (implementation details)
-    RTS
-
-clear_cell_data:
+divide:
+    ; Simple division routine
     LDX #0
-    LDA #0
-.clear_loop:
-    STA cell_data,X
+    LDY #0
+divide_loop:
+    SEC
+    SBC temp_pointer
+    STA temp_pointer
     INX
-    BNE .clear_loop
+    CPX value_stack_ptr
+    BNE divide_loop
     RTS
 
 init_screen:
-    ; Initialize Apple II screen
-    ; ... (implementation details)
+    ; Clear the screen and set up initial display
+    ; Apple II screen clear routine (example)
+    LDA #$0
+    STA $C054        ; Clear screen memory
+    STA $C057        ; Set text mode
     RTS
 
-larger_or_equal:
-    ; This is implicitly handled by the UNTIL macro
+clear_cell_data:
+    ; Clear memory allocated for cell data
+    LDX #$00
+clear_loop:
+    STX cell_data,X
+    INX
+    CPX #$FF
+    BNE clear_loop
     RTS
 
-; Data section
-last_key:        .BYTE 0
-formula_mode:    .BYTE 0  ; 0 = normal mode, 1 = formula entry mode
-value1:          .WORD 0
-value2:          .WORD 0
-formula_index:   .BYTE 0
+zero_ptr_current_node:
+    ; Initialize the current node pointer to the top left of the sheet
+    LDA #<cell_data
+    STA current_node
+    LDA #>cell_data
+    STA current_node+1
+    RTS
 
+copy_pointer_to_wid:
+    ; Copy the current node pointer to the display buffer
+    LDY #0
+copy_loop:
+    LDA (current_node),Y
+    STA display_buffer,Y
+    INY
+    CPY #CELL_SIZE
+    BNE copy_loop
+    RTS
+
+update_display:
+    ; Update the screen with the current worksheet data
+    ; Copy display_buffer to screen memory
+    LDY #0
+update_loop:
+    LDA display_buffer,Y
+    STA $0400,Y     ; Example screen memory location
+    INY
+    CPY #$FF
+    BNE update_loop
+    RTS
+
+update_cursor_display:
+    ; Update the screen to show the cursor at the current position
+    ; Example cursor display logic
+    LDA cursor_row
+    STA $D000        ; Example cursor row memory location
+    LDA cursor_col
+    STA $D001        ; Example cursor column memory location
+    RTS
+
+sum_function:
+    ; Calculate the sum of a range of cells
+    LDX cursor_row
+    LDY cursor_col
+    ; Simplified example assuming single row range for illustration
+    LDA cursor_row
+    ASL
+    TAX
+    LDA #0
+    STA temp_pointer
+    STA temp_pointer+1
+sum_loop:
+    LDA cell_data,X
+    CLC
+    ADC temp_pointer
+    STA temp_pointer
+    INX
+    CPX cursor_col
+    BNE sum_loop
+    ; Store the sum in the current cell
+    LDA temp_pointer
+    STA cell_data,X
+    RTS
+
+avg_function:
+    ; Calculate the average of a range of cells
+    LDX cursor_row
+    LDY cursor_col
+    ; Simplified example assuming single row range for illustration
+    LDA cursor_row
+    ASL
+    TAX
+    LDA #0
+    STA temp_pointer
+    STA temp_pointer+1
+    LDA #0
+    STA value_stack
+    LDA #1
+    STA value_stack+1
+avg_loop:
+    LDA cell_data,X
+    CLC
+    ADC temp_pointer
+    STA temp_pointer
+    INX
+    CPX cursor_col
+    BNE avg_loop
+    ; Calculate the average
+    LDA temp_pointer
+    SEC
+    SBC value_stack
+    STA temp_pointer
+    ; Store the average in the current cell
+    LDA temp_pointer
+    STA cell_data,X
+    RTS
+
+min_function:
+    ; Calculate the minimum of a range of cells
+    LDX cursor_row
+    LDY cursor_col
+    ; Simplified example assuming single row range for illustration
+    LDA cursor_row
+    ASL
+    TAX
+    LDA cell_data,X
+    STA temp_pointer
+    INX
+min_loop:
+    LDA cell_data,X
+    CMP temp_pointer
+    BCS skip_min
+    LDA cell_data,X
+    STA temp_pointer
+skip_min:
+    INX
+    CPX cursor_col
+    BNE min_loop
+    ; Store the minimum in the current cell
+    LDA temp_pointer
+    STA cell_data,X
+    RTS
+
+max_function:
+    ; Calculate the maximum of a range of cells
+    LDX cursor_row
+    LDY cursor_col
+    ; Simplified example assuming single row range for illustration
+    LDA cursor_row
+    ASL
+    TAX
+    LDA cell_data,X
+    STA temp_pointer
+    INX
+max_loop:
+    LDA cell_data,X
+    CMP temp_pointer
+    BCC skip_max
+    LDA cell_data,X
+    STA temp_pointer
+skip_max:
+    INX
+    CPX cursor_col
+    BNE max_loop
+    ; Store the maximum in the current cell
+    LDA temp_pointer
+    STA cell_data,X
+    RTS
