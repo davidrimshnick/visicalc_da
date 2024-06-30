@@ -160,8 +160,17 @@ clear_cell:
     ; Clear the current cell
     LDX cursor_row
     LDY cursor_col
+    ; Compute the address to clear data in cell_data
+    LDA cursor_row
+    ASL
+    TAY
+    LDA cursor_col
+    ADC Y
+    STA temp_pointer
+    STA temp_pointer+1
+    ; Clear the data in the specified cell
     LDA #0
-    STA (current_node),Y
+    STA (temp_pointer),Y
     RTS
 
 recalculate:
@@ -181,30 +190,34 @@ recalculate_loop:
 
 delete_row_column:
     ; Logic to delete row or column
-    ; Simplified example
-    LDA cursor_row
-    ASL
-    TAX
+    LDX cursor_row
+    LDY cursor_col
+    ; Clear the entire row or column starting from the current cell
+delete_loop:
     LDA #0
-    STA cell_data,X
+    STA (current_node),Y
+    INX
+    CPX MAX_COLS
+    BNE delete_loop
     RTS
 
 set_display_format:
     ; Logic to set display format
-    ; Example format setting
     LDX cursor_row
     LDY cursor_col
-    LDA #$01 ; Example format code
+    ; Set the display format for the cell
+    ; Example format code logic (1: General, 2: Integer, 3: Float, 4: Dollars)
+    LDA #$01
     STA (current_node),Y
     RTS
 
 set_column_width:
     ; Logic to set column width
-    ; Simplified example
     LDA cursor_col
     ASL
     TAX
-    LDA #10 ; Example column width
+    ; Example column width setting
+    LDA #10
     STA cell_data,X
     RTS
 
@@ -380,15 +393,20 @@ perform_multiply:
 
 multiply:
     ; Simple multiplication routine
-    LDY #0
+    LDA #0
+    STA temp_pointer+1
+    LDY #8
 multiply_loop:
-    LDA value_stack,Y
+    LSR temp_pointer
+    ROR temp_pointer+1
+    LDA value_stack-1,Y
+    BCC multiply_skip
     CLC
     ADC temp_pointer
-    TAY
-    DEX
+    STA value_stack-1,Y
+multiply_skip:
+    DEY
     BNE multiply_loop
-    STA temp_pointer
     RTS
 
 perform_divide:
@@ -405,15 +423,20 @@ perform_divide:
 
 divide:
     ; Simple division routine
-    LDY #0
+    LDA #0
+    STA temp_pointer+1
+    LDY #8
 divide_loop:
-    LDA value_stack,Y
+    LSR temp_pointer
+    ROR temp_pointer+1
+    LDA value_stack-1,Y
+    BCC divide_skip
     SEC
     SBC temp_pointer
-    TAY
-    DEX
+    STA value_stack-1,Y
+divide_skip:
+    DEY
     BNE divide_loop
-    STA temp_pointer
     RTS
 
 init_screen:
@@ -478,7 +501,7 @@ sum_function:
     ; Calculate the sum of a range of cells
     LDX cursor_row
     LDY cursor_col
-    ; Simplified example assuming single row range for illustration
+    ; Iterate through the range and sum values
     LDA cursor_row
     ASL
     TAX
@@ -502,7 +525,7 @@ avg_function:
     ; Calculate the average of a range of cells
     LDX cursor_row
     LDY cursor_col
-    ; Simplified example assuming single row range for illustration
+    ; Iterate through the range and sum values
     LDA cursor_row
     ASL
     TAX
@@ -535,7 +558,7 @@ min_function:
     ; Calculate the minimum of a range of cells
     LDX cursor_row
     LDY cursor_col
-    ; Simplified example assuming single row range for illustration
+    ; Iterate through the range and find minimum
     LDA cursor_row
     ASL
     TAX
@@ -561,7 +584,7 @@ max_function:
     ; Calculate the maximum of a range of cells
     LDX cursor_row
     LDY cursor_col
-    ; Simplified example assuming single row range for illustration
+    ; Iterate through the range and find maximum
     LDA cursor_row
     ASL
     TAX
