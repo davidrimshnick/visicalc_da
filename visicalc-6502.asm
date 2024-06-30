@@ -253,8 +253,8 @@ perform_add:
     ; Perform addition
     DEY
     LDA value_stack,Y
-    SEC
-    SBC value_stack-1,Y
+    CLC
+    ADC value_stack-1,Y
     STA value_stack-1,Y
     INX
     JMP compute_loop
@@ -263,8 +263,8 @@ perform_subtract:
     ; Perform subtraction
     DEY
     LDA value_stack,Y
-    CLC
-    ADC value_stack-1,Y
+    SEC
+    SBC value_stack-1,Y
     STA value_stack-1,Y
     INX
     JMP compute_loop
@@ -283,15 +283,15 @@ perform_multiply:
 
 multiply:
     ; Simple multiplication routine
-    LDX #0
     LDY #0
 multiply_loop:
+    LDA value_stack,Y
     CLC
     ADC temp_pointer
-    STA temp_pointer
-    INX
-    CPX value_stack_ptr
+    TAY
+    DEX
     BNE multiply_loop
+    STA temp_pointer
     RTS
 
 perform_divide:
@@ -308,15 +308,15 @@ perform_divide:
 
 divide:
     ; Simple division routine
-    LDX #0
     LDY #0
 divide_loop:
+    LDA value_stack,Y
     SEC
     SBC temp_pointer
-    STA temp_pointer
-    INX
-    CPX value_stack_ptr
+    TAY
+    DEX
     BNE divide_loop
+    STA temp_pointer
     RTS
 
 init_screen:
