@@ -71,17 +71,23 @@ MAIN_LOOP:
     DO
         JSR poll_keyboard        ; not to lose keystrokes...
 
-        ; Calling functions
+        ; Example of calling NPV function
         JSR calculate_npv
+        ; Example of calling LOOKUP function
         JSR lookup_value
+        ; Example of calling ABS function
         JSR abs_value
+        ; Example of calling INT function
         JSR int_value
+        ; Example of calling EXP function
         JSR exp_value
+        ; Example of calling LN function
         JSR ln_value
+        ; Example of calling SIN function
         JSR sin_value
 
-        ; Add further calls and logic here
-
+        JSR update_display       ; Update the display
+        
     UNTIL check_exit_condition
 
     JMP MAIN_LOOP
@@ -477,23 +483,27 @@ copy_loop:
 
 update_display:
     ; Update the screen with the current worksheet data
-    ; Copy display_buffer to screen memory
     LDY #0
 update_loop:
-    LDA display_buffer,Y
-    STA $0400,Y     ; Example screen memory location
+    LDA cell_data,Y
+    JSR print_value
     INY
     CPY #$FF
     BNE update_loop
     RTS
 
-update_cursor_display:
-    ; Update the screen to show the cursor at the current position
-    ; Example cursor display logic
-    LDA cursor_row
-    STA $D000        ; Example cursor row memory location
-    LDA cursor_col
-    STA $D001        ; Example cursor column memory location
+print_value:
+    ; Print a value from cell_data to the screen buffer
+    LDA #0           ; Column index
+    TAX
+print_char:
+    LDA cell_data,X
+    BEQ print_done
+    STA $0400,X      ; Example screen memory location
+    INX
+    JMP print_char
+
+print_done:
     RTS
 
 sum_function:
